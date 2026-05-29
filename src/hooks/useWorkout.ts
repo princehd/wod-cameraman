@@ -1,0 +1,232 @@
+import { useRef, useState, useCallback, useEffect, type RefObject } from 'react'
+import {
+  PoseLandmarker,
+  FilesetResolver,
+  DrawingUtils,
+} from '@mediapipe/tasks-vision'
+import { angleBetweenPoints } from '../utils/geometry'
+
+const WASM_URL =
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+const MODEL_URL =
+  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task'
+
+const LM = {
+  LEFT_HIP: 23,
+  RIGHT_HIP: 24,
+  LEFT_KNEE: 25,
+  RIGHT_KNEE: 26,
+  LEFT_ANKLE: 27,
+  RIGHT_ANKLE: 28,
+} as const
+
+const ANGLE_DOWN = 100
+const ANGLE_UP = 160
+
+export type SquatPhase = 'up' | 'down'
+
+export function useWorkout(
+  videoRef: RefObject<HTMLVideoElement | null>,
+  canvasRef: RefObject<HTMLCanvasElement | null>,
+) {
+  const [isReady, setIsReady] = useState(false)
+  const [isRunning, setIsRunning] = useState(false)
+  const [count, setCount] = useState(0)
+  const [squatPhase, setSquatPhase] = useState<SquatPhase>('up')
+  const [kneeAngle, setKneeAngle] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loadingMsg, setLoadingMsg] = useState('모델 로딩 중...')
+
+  const poseLandmarkerRef = useRef<PoseLandmarker | null>(null)
+  const drawingUtilsRef = useRef<DrawingUtils | null>(null)
+  const rafRef = useRef<number | null>(null)
+  const isRunningRef = useRef(false)
+  const squatPhaseRef = useRef<SquatPhase>('up')
+  const countRef = useRef(0)
+  const lastVideoTimeRef = useRef(-1)
+
+  // Initialize MediaPipe
+  useEffect(() => {
+    let cancelled = false
+    async function init() {
+      try {
+        setLoadingMsg('WASM 로딩 중...')
+        const vision = await FilesetResolver.forVisionTasks(WASM_URL)
+        if (cancelled) return
+
+        setLoadingMsg('AI 모델 로딩 중...')
+        const lm = await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: MODEL_URL,
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          numPoses: 1,
+        })
+        if (cancelled) {
+          lm.close()
+          return
+        }
+        poseLandmarkerRef.current = lm
+        setIsReady(true)
+      } catch {
+        if (!cancelled) {
+          setError('AI 모델 로딩 실패. 인터넷 연결을 확인하세요.')
+        }
+      }
+    }
+    init()
+    return () => {
+      cancelled = true
+      poseLandmarkerRef.current?.close()
+      poseLandmarkerRef.current = null
+    }
+  }, [])
+
+  const speak = useCallback((text: string) => {
+    if (!window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = 1.2
+    utterance.volume = 1.0
+    window.speechSynthesis.speak(utterance)
+  }, [])
+
+  const runDetection = useCallback(() => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    const lm = poseLandmarkerRef.current
+
+    if (!isRunningRef.current || !video || !canvas || !lm) return
+
+    if (video.readyState < 2 || video.currentTime === lastVideoTimeRef.current) {
+      rafRef.current = requestAnimationFrame(runDetection)
+      return
+    }
+    lastVideoTimeRef.current = video.currentTime
+
+    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+      canvas.width = video.videoWidth || 640
+      canvas.height = video.videoHeight || 480
+    }
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const results = lm.detectForVideo(video, performance.now())
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    if (results.landmarks.length > 0) {
+      const landmarks = results.landmarks[0]
+
+      if (!drawingUtilsRef.current) {
+        drawingUtilsRef.current = new DrawingUtils(ctx)
+      }
+      drawingUtilsRef.current.drawConnectors(
+        landmarks,
+        PoseLandmarker.POSE_CONNECTIONS,
+        { color: '#00ff88', lineWidth: 2 },
+      )
+      drawingUtilsRef.current.drawLandmarks(landmarks, {
+        color: '#ffffff',
+        fillColor: '#00ff88',
+        radius: 4,
+      })
+
+      const leftAngle = angleBetweenPoints(
+        landmarks[LM.LEFT_HIP],
+        landmarks[LM.LEFT_KNEE],
+        landmarks[LM.LEFT_ANKLE],
+      )
+      const rightAngle = angleBetweenPoints(
+        landmarks[LM.RIGHT_HIP],
+        landmarks[LM.RIGHT_KNEE],
+        landmarks[LM.RIGHT_ANKLE],
+      )
+      const avg = (leftAngle + rightAngle) / 2
+      setKneeAngle(Math.round(avg))
+
+      if (squatPhaseRef.current === 'up' && avg < ANGLE_DOWN) {
+        squatPhaseRef.current = 'down'
+        setSquatPhase('down')
+      } else if (squatPhaseRef.current === 'down' && avg > ANGLE_UP) {
+        squatPhaseRef.current = 'up'
+        setSquatPhase('up')
+        countRef.current += 1
+        setCount(countRef.current)
+        speak(String(countRef.current))
+      }
+    }
+
+    rafRef.current = requestAnimationFrame(runDetection)
+  }, [videoRef, canvasRef, speak])
+
+  const start = useCallback(async () => {
+    if (!videoRef.current || !isReady) return
+    setError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+        },
+        audio: false,
+      })
+      const video = videoRef.current
+      video.srcObject = stream
+      await video.play()
+      lastVideoTimeRef.current = -1
+      isRunningRef.current = true
+      setIsRunning(true)
+      rafRef.current = requestAnimationFrame(runDetection)
+    } catch {
+      setError('카메라 접근 실패. 카메라 권한을 허용해주세요.')
+    }
+  }, [videoRef, isReady, runDetection])
+
+  const stop = useCallback(() => {
+    isRunningRef.current = false
+    setIsRunning(false)
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    const video = videoRef.current
+    if (video?.srcObject) {
+      ;(video.srcObject as MediaStream).getTracks().forEach((t) => t.stop())
+      video.srcObject = null
+    }
+    const canvas = canvasRef.current
+    if (canvas) {
+      canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
+    }
+  }, [videoRef, canvasRef])
+
+  const reset = useCallback(() => {
+    countRef.current = 0
+    squatPhaseRef.current = 'up'
+    setCount(0)
+    setSquatPhase('up')
+    setKneeAngle(null)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+    }
+  }, [])
+
+  return {
+    isReady,
+    isRunning,
+    count,
+    squatPhase,
+    kneeAngle,
+    error,
+    loadingMsg,
+    start,
+    stop,
+    reset,
+  }
+}

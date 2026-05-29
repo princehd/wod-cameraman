@@ -1,0 +1,25 @@
+:root {
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  background: #0a0a0a;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+#root {
+  height: 100%;
+}
