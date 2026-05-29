@@ -41,7 +41,6 @@ function App() {
           className="camera-video"
           playsInline
           muted
-          autoComplete="off"
         />
         <canvas ref={canvasRef} className="pose-canvas" />
 
