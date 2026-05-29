@@ -14,9 +14,11 @@ function App() {
     kneeAngle,
     error,
     loadingMsg,
+    facingMode,
     start,
     stop,
     reset,
+    switchCamera,
   } = useWorkout(videoRef, canvasRef)
 
   const statusLabel = isRunning ? 'LIVE' : isReady ? 'READY' : loadingMsg
@@ -50,6 +52,15 @@ function App() {
             <span>{isReady ? '시작 버튼을 눌러주세요' : loadingMsg}</span>
           </div>
         )}
+
+        <button
+          className="btn-switch-camera"
+          onClick={switchCamera}
+          disabled={!isReady}
+          title={facingMode === 'environment' ? '전면 카메라로 전환' : '후면 카메라로 전환'}
+        >
+          {facingMode === 'environment' ? '🤳' : '📷'}
+        </button>
 
         {!isReady && (
           <div className="loading-overlay">

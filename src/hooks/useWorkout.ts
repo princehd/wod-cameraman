@@ -36,6 +36,7 @@ export function useWorkout(
   const [kneeAngle, setKneeAngle] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loadingMsg, setLoadingMsg] = useState('모델 로딩 중...')
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment')
 
   const poseLandmarkerRef = useRef<PoseLandmarker | null>(null)
   const drawingUtilsRef = useRef<DrawingUtils | null>(null)
@@ -161,13 +162,13 @@ export function useWorkout(
     rafRef.current = requestAnimationFrame(runDetection)
   }, [videoRef, canvasRef, speak])
 
-  const start = useCallback(async () => {
+  const startCamera = useCallback(async (facing: 'environment' | 'user') => {
     if (!videoRef.current || !isReady) return
     setError(null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: 'environment' },
+          facingMode: { ideal: facing },
           width: { ideal: 640 },
           height: { ideal: 480 },
         },
@@ -184,6 +185,26 @@ export function useWorkout(
       setError('카메라 접근 실패. 카메라 권한을 허용해주세요.')
     }
   }, [videoRef, isReady, runDetection])
+
+  const start = useCallback(() => startCamera(facingMode), [startCamera, facingMode])
+
+  const switchCamera = useCallback(async () => {
+    const next = facingMode === 'environment' ? 'user' : 'environment'
+    setFacingMode(next)
+    if (isRunning) {
+      isRunningRef.current = false
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+      const video = videoRef.current
+      if (video?.srcObject) {
+        ;(video.srcObject as MediaStream).getTracks().forEach((t) => t.stop())
+        video.srcObject = null
+      }
+      await startCamera(next)
+    }
+  }, [facingMode, isRunning, videoRef, startCamera])
 
   const stop = useCallback(() => {
     isRunningRef.current = false
@@ -225,8 +246,10 @@ export function useWorkout(
     kneeAngle,
     error,
     loadingMsg,
+    facingMode,
     start,
     stop,
     reset,
+    switchCamera,
   }
 }

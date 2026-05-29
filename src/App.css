@@ -88,6 +88,33 @@
   pointer-events: none;
 }
 
+.btn-switch-camera {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.btn-switch-camera:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btn-switch-camera:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
 .camera-placeholder {
   position: absolute;
   inset: 0;
