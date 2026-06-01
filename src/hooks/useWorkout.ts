@@ -22,6 +22,9 @@ const LM = {
 
 const ANGLE_DOWN = 100
 const ANGLE_UP = 160
+const VISIBILITY_THRESHOLD = 0.6  // 방안 1: 가시성 필터
+const MIN_REP_INTERVAL_MS = 800   // 방안 2: 최소 rep 간격
+const SMOOTH_FRAMES = 5           // 방안 3: 스무딩 프레임 수
 
 export type SquatPhase = 'up' | 'down'
 
@@ -45,6 +48,8 @@ export function useWorkout(
   const squatPhaseRef = useRef<SquatPhase>('up')
   const countRef = useRef(0)
   const lastVideoTimeRef = useRef(-1)
+  const lastRepTimeRef = useRef(0)        // 방안 2: 마지막 rep 시각
+  const angleBufferRef = useRef<number[]>([])  // 방안 3: 각도 스무딩 버퍼
 
   // Initialize MediaPipe
   useEffect(() => {
@@ -134,6 +139,20 @@ export function useWorkout(
         radius: 4,
       })
 
+      // 방안 1: 주요 관절 가시성 검증
+      const keyPoints = [
+        landmarks[LM.LEFT_HIP], landmarks[LM.RIGHT_HIP],
+        landmarks[LM.LEFT_KNEE], landmarks[LM.RIGHT_KNEE],
+        landmarks[LM.LEFT_ANKLE], landmarks[LM.RIGHT_ANKLE],
+      ]
+      const allVisible = keyPoints.every(
+        (lm) => (lm.visibility ?? 0) >= VISIBILITY_THRESHOLD,
+      )
+      if (!allVisible) {
+        rafRef.current = requestAnimationFrame(runDetection)
+        return
+      }
+
       const leftAngle = angleBetweenPoints(
         landmarks[LM.LEFT_HIP],
         landmarks[LM.LEFT_KNEE],
@@ -144,18 +163,33 @@ export function useWorkout(
         landmarks[LM.RIGHT_KNEE],
         landmarks[LM.RIGHT_ANKLE],
       )
-      const avg = (leftAngle + rightAngle) / 2
-      setKneeAngle(Math.round(avg))
+      const rawAngle = (leftAngle + rightAngle) / 2
 
-      if (squatPhaseRef.current === 'up' && avg < ANGLE_DOWN) {
+      // 방안 3: 이동 평균으로 각도 스무딩
+      angleBufferRef.current.push(rawAngle)
+      if (angleBufferRef.current.length > SMOOTH_FRAMES) {
+        angleBufferRef.current.shift()
+      }
+      const smoothed =
+        angleBufferRef.current.reduce((a, b) => a + b, 0) /
+        angleBufferRef.current.length
+
+      setKneeAngle(Math.round(smoothed))
+
+      if (squatPhaseRef.current === 'up' && smoothed < ANGLE_DOWN) {
         squatPhaseRef.current = 'down'
         setSquatPhase('down')
-      } else if (squatPhaseRef.current === 'down' && avg > ANGLE_UP) {
-        squatPhaseRef.current = 'up'
-        setSquatPhase('up')
-        countRef.current += 1
-        setCount(countRef.current)
-        speak(String(countRef.current))
+      } else if (squatPhaseRef.current === 'down' && smoothed > ANGLE_UP) {
+        // 방안 2: 최소 rep 간격 체크
+        const now = performance.now()
+        if (now - lastRepTimeRef.current >= MIN_REP_INTERVAL_MS) {
+          squatPhaseRef.current = 'up'
+          setSquatPhase('up')
+          lastRepTimeRef.current = now
+          countRef.current += 1
+          setCount(countRef.current)
+          speak(String(countRef.current))
+        }
       }
     }
 
@@ -234,6 +268,8 @@ export function useWorkout(
   const reset = useCallback(() => {
     countRef.current = 0
     squatPhaseRef.current = 'up'
+    lastRepTimeRef.current = 0
+    angleBufferRef.current = []
     setCount(0)
     setSquatPhase('up')
     setKneeAngle(null)
