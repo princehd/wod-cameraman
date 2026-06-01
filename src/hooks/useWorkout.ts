@@ -165,6 +165,13 @@ export function useWorkout(
   const startCamera = useCallback(async (facing: 'environment' | 'user') => {
     if (!videoRef.current || !isReady) return
     setError(null)
+
+    // iOS PWA: unlock speech synthesis on user interaction
+    if (window.speechSynthesis) {
+      const unlock = new SpeechSynthesisUtterance('')
+      window.speechSynthesis.speak(unlock)
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
