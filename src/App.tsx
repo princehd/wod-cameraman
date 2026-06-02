@@ -23,23 +23,49 @@ function App() {
     switchCamera,
   } = useWorkout(videoRef, canvasRef)
 
-  const statusLabel = isRunning ? 'LIVE' : isReady ? 'READY' : loadingMsg
-
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>WOD CAMERAMAN</h1>
-        <div className="status-indicator">
-          <div className={`status-dot ${isRunning ? 'running' : isReady ? 'ready' : 'loading'}`} />
-          <span>{statusLabel}</span>
-        </div>
-      </header>
-
+      {/* 카메라 풀스크린 영역 */}
       <div className="camera-container">
         <video ref={videoRef} className="camera-video" playsInline muted />
         <canvas ref={canvasRef} className="pose-canvas" />
 
-        {/* 카메라 미실행 시 플레이스홀더 */}
+        {/* 상단 헤더 오버레이 */}
+        <div className="overlay-header">
+          <span className="overlay-title">WOD CAM</span>
+          <div className="status-indicator">
+            <div className={`status-dot ${isRunning ? 'running' : isReady ? 'ready' : 'loading'}`} />
+            <span>{isRunning ? 'LIVE' : isReady ? 'READY' : loadingMsg}</span>
+          </div>
+        </div>
+
+        {/* 좌상단 카운트 정보 오버레이 */}
+        {isRunning && (
+          <div className="info-overlay">
+            <div className={`squat-phase-badge phase-${squatPhase}`}>
+              {squatPhase === 'down' ? 'DOWN ▼' : 'UP ▲'}
+            </div>
+            <div className={`count-display ${!isBodyDetected ? 'locked' : ''}`}>
+              {count}
+            </div>
+            {kneeAngle !== null && (
+              <div className="knee-angle-display">{kneeAngle}°</div>
+            )}
+          </div>
+        )}
+
+        {/* 하단 안내 메시지 */}
+        {isRunning && guidanceMsg && (
+          <div className="guidance-overlay">
+            <span className="guidance-msg">{guidanceMsg}</span>
+          </div>
+        )}
+
+        {isRunning && isBodyDetected && (
+          <div className="ready-badge">준비 완료 ✓</div>
+        )}
+
+        {/* 카메라 미실행 플레이스홀더 */}
         {!isRunning && (
           <div className="camera-placeholder">
             <div className="camera-icon">📷</div>
@@ -47,19 +73,7 @@ function App() {
           </div>
         )}
 
-        {/* 전신 미감지 시 안내 메시지 */}
-        {isRunning && guidanceMsg && (
-          <div className="guidance-overlay">
-            <span className="guidance-msg">{guidanceMsg}</span>
-          </div>
-        )}
-
-        {/* 전신 감지 완료 표시 */}
-        {isRunning && isBodyDetected && (
-          <div className="ready-badge">준비 완료 ✓</div>
-        )}
-
-        {/* 모델 로딩 오버레이 */}
+        {/* 모델 로딩 */}
         {!isReady && (
           <div className="loading-overlay">
             <div className="loading-spinner" />
@@ -67,7 +81,7 @@ function App() {
           </div>
         )}
 
-        {/* 카메라 전환 버튼 */}
+        {/* 카메라 전환 */}
         <button
           className="btn-switch-camera"
           onClick={switchCamera}
@@ -78,22 +92,9 @@ function App() {
         </button>
       </div>
 
-      <div className="count-section">
-        <div className={`squat-phase-badge phase-${squatPhase}`}>
-          {squatPhase === 'down' ? 'DOWN ▼' : 'UP ▲'}
-        </div>
-
-        <div className={`count-display ${isRunning && !isBodyDetected ? 'locked' : ''}`}>
-          {count}
-        </div>
-
-        <div className="knee-angle-display">
-          {kneeAngle !== null ? `무릎 각도 ${kneeAngle}°` : ''}
-        </div>
-      </div>
-
       {error && <div className="error-banner">{error}</div>}
 
+      {/* 컨트롤 버튼 */}
       <div className="controls">
         <button className="btn btn-start" onClick={start} disabled={!isReady || isRunning}>
           시작
