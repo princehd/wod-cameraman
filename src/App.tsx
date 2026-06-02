@@ -25,7 +25,6 @@ function App() {
 
   return (
     <div className="app">
-      {/* 카메라 풀스크린 영역 */}
       <div className="camera-container">
         <video ref={videoRef} className="camera-video" playsInline muted />
         <canvas ref={canvasRef} className="pose-canvas" />
@@ -86,25 +85,24 @@ function App() {
           className="btn-switch-camera"
           onClick={switchCamera}
           disabled={!isReady}
-          title={facingMode === 'environment' ? '전면 카메라로 전환' : '후면 카메라로 전환'}
         >
           {facingMode === 'environment' ? '🤳' : '📷'}
         </button>
-      </div>
 
-      {error && <div className="error-banner">{error}</div>}
+        {/* 하단 컨트롤 오버레이 */}
+        {error && <div className="error-banner">{error}</div>}
 
-      {/* 컨트롤 버튼 */}
-      <div className="controls">
-        <button className="btn btn-start" onClick={start} disabled={!isReady || isRunning}>
-          시작
-        </button>
-        <button className="btn btn-stop" onClick={stop} disabled={!isRunning}>
-          정지
-        </button>
-        <button className="btn btn-reset" onClick={reset} disabled={isRunning}>
-          리셋
-        </button>
+        <div className="controls">
+          <button className="btn btn-start" onClick={start} disabled={!isReady || isRunning}>
+            시작
+          </button>
+          <button className="btn btn-stop" onClick={stop} disabled={!isRunning}>
+            정지
+          </button>
+          <button className="btn btn-reset" onClick={reset} disabled={isRunning}>
+            리셋
+          </button>
+        </div>
       </div>
     </div>
   )
