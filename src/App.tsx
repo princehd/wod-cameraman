@@ -9,6 +9,8 @@ function App() {
   const {
     isReady,
     isRunning,
+    isBodyDetected,
+    guidanceMsg,
     count,
     squatPhase,
     kneeAngle,
@@ -28,24 +30,16 @@ function App() {
       <header className="app-header">
         <h1>WOD CAMERAMAN</h1>
         <div className="status-indicator">
-          <div
-            className={`status-dot ${
-              isRunning ? 'running' : isReady ? 'ready' : 'loading'
-            }`}
-          />
+          <div className={`status-dot ${isRunning ? 'running' : isReady ? 'ready' : 'loading'}`} />
           <span>{statusLabel}</span>
         </div>
       </header>
 
       <div className="camera-container">
-        <video
-          ref={videoRef}
-          className="camera-video"
-          playsInline
-          muted
-        />
+        <video ref={videoRef} className="camera-video" playsInline muted />
         <canvas ref={canvasRef} className="pose-canvas" />
 
+        {/* 카메라 미실행 시 플레이스홀더 */}
         {!isRunning && (
           <div className="camera-placeholder">
             <div className="camera-icon">📷</div>
@@ -53,6 +47,27 @@ function App() {
           </div>
         )}
 
+        {/* 전신 미감지 시 안내 메시지 */}
+        {isRunning && guidanceMsg && (
+          <div className="guidance-overlay">
+            <span className="guidance-msg">{guidanceMsg}</span>
+          </div>
+        )}
+
+        {/* 전신 감지 완료 표시 */}
+        {isRunning && isBodyDetected && (
+          <div className="ready-badge">준비 완료 ✓</div>
+        )}
+
+        {/* 모델 로딩 오버레이 */}
+        {!isReady && (
+          <div className="loading-overlay">
+            <div className="loading-spinner" />
+            <span>{loadingMsg}</span>
+          </div>
+        )}
+
+        {/* 카메라 전환 버튼 */}
         <button
           className="btn-switch-camera"
           onClick={switchCamera}
@@ -61,13 +76,6 @@ function App() {
         >
           {facingMode === 'environment' ? '🤳' : '📷'}
         </button>
-
-        {!isReady && (
-          <div className="loading-overlay">
-            <div className="loading-spinner" />
-            <span>{loadingMsg}</span>
-          </div>
-        )}
       </div>
 
       <div className="count-section">
@@ -75,7 +83,9 @@ function App() {
           {squatPhase === 'down' ? 'DOWN ▼' : 'UP ▲'}
         </div>
 
-        <div className="count-display">{count}</div>
+        <div className={`count-display ${isRunning && !isBodyDetected ? 'locked' : ''}`}>
+          {count}
+        </div>
 
         <div className="knee-angle-display">
           {kneeAngle !== null ? `무릎 각도 ${kneeAngle}°` : ''}
@@ -85,11 +95,7 @@ function App() {
       {error && <div className="error-banner">{error}</div>}
 
       <div className="controls">
-        <button
-          className="btn btn-start"
-          onClick={start}
-          disabled={!isReady || isRunning}
-        >
+        <button className="btn btn-start" onClick={start} disabled={!isReady || isRunning}>
           시작
         </button>
         <button className="btn btn-stop" onClick={stop} disabled={!isRunning}>
