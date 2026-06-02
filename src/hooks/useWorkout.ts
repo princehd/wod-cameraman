@@ -2,7 +2,6 @@ import { useRef, useState, useCallback, useEffect, type RefObject } from 'react'
 import {
   PoseLandmarker,
   FilesetResolver,
-  DrawingUtils,
   type NormalizedLandmark,
 } from '@mediapipe/tasks-vision'
 import { angleBetweenPoints } from '../utils/geometry'
@@ -26,6 +25,64 @@ const ANGLE_UP = 160
 const VISIBILITY_THRESHOLD = 0.6
 const MIN_REP_INTERVAL_MS = 800
 const SMOOTH_FRAMES = 5
+const LANDMARK_SMOOTH_FRAMES = 6  // 좌표 스무딩 프레임 수
+
+// 최근 N프레임 관절 좌표 평균 → 시각적 떨림 제거
+function getSmoothedLandmarks(buffer: NormalizedLandmark[][]): NormalizedLandmark[] {
+  const len = buffer.length
+  return buffer[0].map((_, i) => ({
+    x: buffer.reduce((s, f) => s + f[i].x, 0) / len,
+    y: buffer.reduce((s, f) => s + f[i].y, 0) / len,
+    z: buffer.reduce((s, f) => s + (f[i].z ?? 0), 0) / len,
+    // visibility는 최신 프레임 기준 (불투명도 반응 빠르게)
+    visibility: buffer[len - 1][i].visibility ?? 1,
+  }))
+}
+
+// visibility 기반 불투명도로 관절/연결선 그리기
+function drawPose(
+  ctx: CanvasRenderingContext2D,
+  landmarks: NormalizedLandmark[],
+  w: number,
+  h: number,
+) {
+  const px = (lm: NormalizedLandmark) => lm.x * w
+  const py = (lm: NormalizedLandmark) => lm.y * h
+
+  // 연결선
+  for (const { start, end } of PoseLandmarker.POSE_CONNECTIONS) {
+    const a = landmarks[start]
+    const b = landmarks[end]
+    const alpha = Math.min(a.visibility ?? 1, b.visibility ?? 1)
+    if (alpha < 0.15) continue
+    ctx.save()
+    ctx.globalAlpha = Math.min(alpha, 0.9)
+    ctx.strokeStyle = '#00ff88'
+    ctx.lineWidth = 2.5
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(px(a), py(a))
+    ctx.lineTo(px(b), py(b))
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  // 관절 점
+  for (const lm of landmarks) {
+    const alpha = lm.visibility ?? 1
+    if (alpha < 0.15) continue
+    ctx.save()
+    ctx.globalAlpha = Math.min(alpha, 0.95)
+    ctx.beginPath()
+    ctx.arc(px(lm), py(lm), 4, 0, Math.PI * 2)
+    ctx.fillStyle = '#00ff88'
+    ctx.fill()
+    ctx.strokeStyle = '#fff'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    ctx.restore()
+  }
+}
 
 export type SquatPhase = 'up' | 'down'
 
@@ -130,7 +187,6 @@ export function useWorkout(
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment')
 
   const poseLandmarkerRef  = useRef<PoseLandmarker | null>(null)
-  const drawingUtilsRef    = useRef<DrawingUtils | null>(null)
   const rafRef             = useRef<number | null>(null)
   const isRunningRef       = useRef(false)
   const squatPhaseRef      = useRef<SquatPhase>('up')
@@ -138,6 +194,7 @@ export function useWorkout(
   const lastVideoTimeRef   = useRef(-1)
   const lastRepTimeRef     = useRef(0)
   const angleBufferRef     = useRef<number[]>([])
+  const landmarkBufferRef  = useRef<NormalizedLandmark[][]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -212,14 +269,15 @@ export function useWorkout(
 
     const landmarks = results.landmarks[0]
 
-    // 스켈레톤 그리기
-    if (!drawingUtilsRef.current) drawingUtilsRef.current = new DrawingUtils(ctx)
-    drawingUtilsRef.current.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {
-      color: '#00ff88', lineWidth: 2,
-    })
-    drawingUtilsRef.current.drawLandmarks(landmarks, {
-      color: '#ffffff', fillColor: '#00ff88', radius: 4,
-    })
+    // 좌표 스무딩: 최근 N프레임 버퍼에 추가 후 평균
+    landmarkBufferRef.current.push(landmarks)
+    if (landmarkBufferRef.current.length > LANDMARK_SMOOTH_FRAMES) {
+      landmarkBufferRef.current.shift()
+    }
+    const smoothedLandmarks = getSmoothedLandmarks(landmarkBufferRef.current)
+
+    // visibility 기반 불투명도로 스켈레톤 그리기
+    drawPose(ctx, smoothedLandmarks, canvas.width, canvas.height)
 
     // 주요 관절 가시성 검증
     const keyPoints = [
@@ -318,6 +376,7 @@ export function useWorkout(
     setIsRunning(false)
     setIsBodyDetected(false)
     setGuidanceMsg('')
+    landmarkBufferRef.current = []
     if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
     const video = videoRef.current
     if (video?.srcObject) {
@@ -332,6 +391,7 @@ export function useWorkout(
     squatPhaseRef.current = 'up'
     lastRepTimeRef.current = 0
     angleBufferRef.current = []
+    landmarkBufferRef.current = []
     setCount(0)
     setSquatPhase('up')
     setKneeAngle(null)
