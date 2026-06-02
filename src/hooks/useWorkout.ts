@@ -108,10 +108,12 @@ function drawSilhouette(ctx: CanvasRenderingContext2D, w: number, h: number) {
   const ankleX = s * 0.07
 
   ctx.save()
-  ctx.strokeStyle = 'rgba(255,255,255,0.28)'
-  ctx.lineWidth   = Math.max(2, s * 0.005)
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)'
+  ctx.lineWidth   = Math.max(3, s * 0.007)
   ctx.lineCap     = 'round'
   ctx.lineJoin    = 'round'
+  ctx.shadowColor = 'rgba(255,255,255,0.4)'
+  ctx.shadowBlur  = 6
   ctx.setLineDash([s * 0.016, s * 0.008])
 
   // 머리
